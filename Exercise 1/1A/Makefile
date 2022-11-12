@@ -1,4 +1,4 @@
-# Author: Maximilian Kleinegger (12041500)
+# Author: Maximilian Kleinegger <e12041500@student.tuwien.ac.at>
 # Created: 2022-10-06
 # Programs: mydiff
 

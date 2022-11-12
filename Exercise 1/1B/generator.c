@@ -368,7 +368,7 @@ static char *generateOutput(struct Edge **solution, int edgesRemoved)
     memset(output, 0, len);
 
     output[0] = edgesRemoved + '0';
-    output[1] = ' ';
+    output[1] = (edgesRemoved == 0) ? '\0' : ' ';
     for (int i = 0; i < edgesRemoved; i++)
     {
         strcat(output, solution[i]->vertex1->name);

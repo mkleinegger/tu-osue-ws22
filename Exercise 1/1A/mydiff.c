@@ -1,8 +1,9 @@
 /**
  * @file mydiff.c
- * @author Maximilian Kleinegger (12041500)
- * @brief compares two files line by line
+ * @author Maximilian Kleinegger <e12041500@student.tuwien.ac.at>
  * @date 2022-10-06
+ *
+ * @brief compares two files line by line
  * @details This programm compares two files line by line and prints
  * the amount of different characters for each line. This amount is
  * either printed to the console or written to the specified file.
@@ -16,6 +17,7 @@
  * [-o outputFile], with this option the user can specify the outputFile,
  * where the result should be written to.
  */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -24,13 +26,9 @@
 #include <errno.h>
 #include <unistd.h>
 
-#define NUMBER_OF_FILES 2
+#define NUMBER_OF_FILES 2 /** number of files that should be provided */
 
-/**
- * @brief name of the programm
- *
- */
-static char *progName; // string to save the programm_name
+static char *progName; /** name of the programm */
 
 /**
  * @brief This function parses arguments
@@ -48,10 +46,9 @@ static char *progName; // string to save the programm_name
 static void parseArguments(int argumentCount, char **arguments, char **fileNameInput1, char **fileNameInput2, char **fileNameOutput, bool *isCaseInsensitive);
 
 /**
- * @brief Opens the specified files
- * @details Tries to open the two input-files and prints an error and exits with code EXIT_FAILURE if this
- * fails. In addition it opens or creates the output-file, if specified (also prints an error and exits with
- * code EXIT_FAILURE if this fails) Otherwise it sets the output to stdout.
+ * @brief Opens the specified files.
+ * @details If an error occurs when opening/creating the files it exits with code EXIT_FAILURE. If no
+ * output file is specified it will be set to stdout.
  *
  * @param fileNameInput1 Pointer to the filename/path for the first input-file
  * @param fileNameInput2 Pointer to the filename/path for the second input-file
@@ -64,11 +61,11 @@ static void openFiles(char *fileNameInput1, char *fileNameInput2, char *fileName
 
 /**
  * @brief This functions compares the specified files line by line and either prints it to stdout
- *  or writes it to the specified file.
- * @details This function reads character for character in each file until both files reach a
- * linebreak-symbol. If this happens a counter which counts the differences per line will be
- * evaluated. If one file reaches EOF the evaluation will be terminated and existing differences
- * will be printed. If the files are the same a specified messages will be printed at the end.
+ * or writes it to the specified file. This function reads character for character in each file
+ * until both files reach a linebreak-symbol. If this happens a counter which counts the differences
+ * per line will be evaluated. If one file reaches EOF the evaluation will be terminated and existing
+ * differences will be printed. If the files are the same a specified messages will be printed at the end.
+ * @details The caller should pass valid file-pointers otherwise the programm will not work properly.
  *
  * @param fileInput1 Pointer to the input stream of the first input-file
  * @param fileInput2 Pointer to the input stream of the second input-file
@@ -80,6 +77,8 @@ static void compareFiles(FILE *fileInput1, FILE *fileInput2, FILE *fileOutput, b
 /**
  * @brief This functions closes all files and reports possible errors back to the user without
  * terminating.
+ * @details The file-pointer should not be used after the call returned, because unexpected
+ * behaviour will happen.
  *
  * @param fileInput1 Pointer to the input stream of the first input-file
  * @param fileInput2 Pointer to the input stream of the second input-file
@@ -89,8 +88,8 @@ static void closeFiles(FILE *fileInput1, FILE *fileInput2, FILE *fileOutput);
 
 /**
  * @brief The entry point of this programm, where all the different functions are called
- * @details In the main-function the different functions, to read the arguments, to read the files
- * to compare the files and to close those are called.
+ * @details The main-function calls the different functions, to read the arguments, to
+ * read the files to compare the files and to close those are called.
  *
  * @param argc number of arguments, provided from the user
  * @param argv values of arguments, provided from the user
@@ -121,7 +120,7 @@ int main(int argc, char *argv[])
 
 /**
  * @brief This functions prints the usage-Message to stderr und exits the programm with code EXIT_FAILURE.
- *
+ * @details global variables: progName
  */
 static void printUsageInfoAndExit(void)
 {
@@ -131,6 +130,7 @@ static void printUsageInfoAndExit(void)
 
 /**
  * @brief This functions prints the errorMessage to stderr and exits the programm with code EXIT_FAILURE.
+ * @details global variables: progName
  *
  * @param errorMessage The custom errorMessage which will be printed as the error to stderr
  */
