@@ -1,26 +1,25 @@
 /**
  * @file circleBuffer.c
- * @author Maximilian Kleinegger (12041500)
+ * @author Maximilian Kleinegger <e12041500@student.tuwien.ac.at>
  * @date 2022-11-02
+ *
  * @brief This file implements the methods to open/close the circle-
  * buffer and to write/read from it.
  */
+
+#include <errno.h>
+#include <fcntl.h>
+#include <stdbool.h>
+#include <semaphore.h>
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <semaphore.h>
-#include <fcntl.h>
-#include <assert.h>
-#include <errno.h>
 #include "circleBuffer.h"
 #include "sharedMemory.h"
 
-struct circleBuffer *openCircleBuffer(char role)
+struct circleBuffer *openCircleBuffer(bool isServer)
 {
-    // check if role is valid
-    assert(role == 's' || role == 'c');
-
     struct circleBuffer *circleBuffer = malloc(sizeof(struct circleBuffer));
     if (circleBuffer == NULL)
     {
@@ -28,7 +27,7 @@ struct circleBuffer *openCircleBuffer(char role)
     }
 
     // open sharedmemory
-    circleBuffer->sharedMemory = openSharedMemory(&circleBuffer->shmfd, role);
+    circleBuffer->sharedMemory = openSharedMemory(&circleBuffer->shmfd, isServer);
     if (circleBuffer->sharedMemory == NULL)
     {
         free(circleBuffer);
@@ -39,38 +38,38 @@ struct circleBuffer *openCircleBuffer(char role)
     circleBuffer->semUsedMemory = NULL;
     circleBuffer->semIsWriting = NULL;
 
-    circleBuffer->semFreeMemory = (role == 's') ? sem_open(SEM_NAME_FREESPACE, O_CREAT | O_EXCL, 0600, BUFFER_LENGTH) : sem_open(SEM_NAME_FREESPACE, 0);
+    circleBuffer->semFreeMemory = (isServer == true) ? sem_open(SEM_NAME_FREESPACE, O_CREAT | O_EXCL, 0600, BUFFER_LENGTH) : sem_open(SEM_NAME_FREESPACE, 0);
     if (circleBuffer->semFreeMemory == SEM_FAILED)
     {
-        closeSharedMemory(circleBuffer->sharedMemory, &circleBuffer->shmfd, role);
+        closeSharedMemory(circleBuffer->sharedMemory, &circleBuffer->shmfd, isServer);
         free(circleBuffer);
 
         return NULL;
     }
 
-    circleBuffer->semUsedMemory = (role == 's') ? sem_open(SEM_NAME_USEDSPACE, O_CREAT | O_EXCL, 0600, 0) : sem_open(SEM_NAME_USEDSPACE, 0);
+    circleBuffer->semUsedMemory = (isServer == true) ? sem_open(SEM_NAME_USEDSPACE, O_CREAT | O_EXCL, 0600, 0) : sem_open(SEM_NAME_USEDSPACE, 0);
     if (circleBuffer->semUsedMemory == SEM_FAILED)
     {
         sem_close(circleBuffer->semFreeMemory);
-        if (role == 's')
+        if (isServer == true)
             sem_unlink(SEM_NAME_FREESPACE);
-        closeSharedMemory(circleBuffer->sharedMemory, &circleBuffer->shmfd, role);
+        closeSharedMemory(circleBuffer->sharedMemory, &circleBuffer->shmfd, isServer);
         free(circleBuffer);
 
         return NULL;
     }
 
-    circleBuffer->semIsWriting = (role == 's') ? sem_open(SEM_NAME_WRITE, O_CREAT | O_EXCL, 0600, 1) : sem_open(SEM_NAME_WRITE, 0);
+    circleBuffer->semIsWriting = (isServer == true) ? sem_open(SEM_NAME_WRITE, O_CREAT | O_EXCL, 0600, 1) : sem_open(SEM_NAME_WRITE, 0);
     if (circleBuffer->semIsWriting == SEM_FAILED)
     {
         sem_close(circleBuffer->semFreeMemory);
         sem_close(circleBuffer->semUsedMemory);
-        if (role == 's')
+        if (isServer == true)
         {
             sem_unlink(SEM_NAME_FREESPACE);
             sem_unlink(SEM_NAME_USEDSPACE);
         }
-        closeSharedMemory(circleBuffer->sharedMemory, &circleBuffer->shmfd, role);
+        closeSharedMemory(circleBuffer->sharedMemory, &circleBuffer->shmfd, isServer);
 
         free(circleBuffer);
 
@@ -80,20 +79,18 @@ struct circleBuffer *openCircleBuffer(char role)
     return circleBuffer;
 }
 
-int closeCircleBuffer(struct circleBuffer *circleBuffer, char role)
+int closeCircleBuffer(struct circleBuffer *circleBuffer, bool isServer)
 {
-    // check if role is valid
-    assert(role == 's' || role == 'c');
-
     int returnValue = 0;
 
-    if (role == 's')
+    if (isServer == true)
     {
+        // to stop all clients from writing to shared memory
         sem_post(circleBuffer->semFreeMemory);
         circleBuffer->sharedMemory->isAlive = false;
     }
 
-    if (closeSharedMemory(circleBuffer->sharedMemory, &circleBuffer->shmfd, role) == -1)
+    if (closeSharedMemory(circleBuffer->sharedMemory, &circleBuffer->shmfd, isServer) == -1)
         returnValue = -1;
 
     if (sem_close(circleBuffer->semFreeMemory) == -1)
@@ -105,7 +102,7 @@ int closeCircleBuffer(struct circleBuffer *circleBuffer, char role)
     if (sem_close(circleBuffer->semIsWriting) == -1)
         returnValue = -1;
 
-    if (role == 's')
+    if (isServer == true)
     {
         if (sem_unlink(SEM_NAME_FREESPACE) == -1)
             returnValue = -1;
