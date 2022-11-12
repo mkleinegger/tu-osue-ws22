@@ -1,14 +1,12 @@
 /**
  * @file generator.c
- * @author Maximilian Kleinegger (12041500)
+ * @author Maximilian Kleinegger <e12041500@student.tuwien.ac.at>
  * @date 2022-11-01
- * @brief generator program for the 3coloring problem
- * @details This generator programm calculates possible solution
- * for the 3coloring problem for the given graph. It reports it's
- * solution to the circle-buffer. The process is running until the
- * user stops it with a signal, or it finds out that the graph is
- * 3-colorable.
  *
+ * @brief generator program for the 3coloring problem
+ *
+ * This generator programm calculates possible solution for the 3coloring problem
+ * for the given graph. It reports it's solution to the circle-buffer.
  */
 #include <stdlib.h>
 #include <stdbool.h>
@@ -32,7 +30,6 @@
  * @brief Data structure to store an edge
  * @details Because the graph is undirected, this information is not necessary
  * and therefore it isn't important which vertex is the start or the end.
- *
  */
 struct Edge
 {
@@ -43,7 +40,6 @@ struct Edge
 /**
  * @brief Data structure to store a vertex
  * @details Color: Green (0), Blue (1), Red (2), Undefined (-1)
- *
  */
 struct Vertex
 {
@@ -51,59 +47,60 @@ struct Vertex
     int color;
 };
 
-/**
- * @brief name of the programm
- *
- */
-static char *progName;
+static char *progName; /** name of the programm */
 
 /**
  * @brief Flag which decides if the process should stop
  *
  */
 static volatile sig_atomic_t quit = 0;
+
 /**
- * @brief Function which handels the SIGINT and SIGTERM signals
- * @details If this function is called, then the variable quit is set
- * to 1, therefore the process should be stopped.
+ * @brief Function which handels the SIGINT and SIGTERM signals and sets variable quit to 1
+ * @details global variables: quit
  *
  * @param signal Signal-number (which will be not used)
  */
 static void handle_signal(int signal) { quit = 1; }
 
 /**
- * @brief This function parses arguments
- * @details The function parses the arguments to vertices and edges. It terminates the
+ * @brief The function parses the arguments to vertices and edges. It terminates the
  * programm if a argument does not meet the format for a vertex (number-number). Otherwise
  * it saves the new vertices and edges inside the arrays and increases the total-sizes of
  * the arrays.
+ * @details Exits with code EXIT_FAILURE when a argument does not match the rule for edges
  *
  * @param argc Number of arguments provided
  * @param argv Values of arguments provided
  * @param vertices Pointer to the array of vertex-pointers, where the vertices are saved to
- * @param totalSizeVertices Size of the array @param vertices
+ * @param totalSizeVertices Size of the array vertices
  * @param edges Pointer to the array of edge-pointers, where the edges are saved to
- * @param totalSizeEdges Size of the array @param edges
+ * @param totalSizeEdges Size of the array edges
  */
 static void parseArgumentsToGraph(int argc, char **argv, struct Vertex ***vertices, int *totalSizeVertices, struct Edge ***edges, int *totalSizeEdges);
 
 /**
- * @brief This functions solves the 3coloring problem for the given graph
- * @details First this function colors the edges randomly with colors. Then it removes
- * the edges with same colored vertices. Then it reports this solution to the circle-buffer
- * and therefore to the supervisor. This process repeats itself until the circle-buffer
- * is closed, or the graph is 3colorable by itself.
+ * @brief This functions solves the 3coloring problem for the given graph. First this function
+ * colors the edges randomly with colors. Then it removes the edges with same colored vertices.
+ * Then it reports this solution to the circle-buffer and therefore to the supervisor. This
+ * process repeats itself until the circle-buffer is closed, or the graph is 3colorable by itself.
+ * @details Caller should check that length from **vertices fits together with totalSizeVertices
+ * and the length from edges fits together with totalSizeEdges, otherwise function works not properly
+ * or segmentation fault could happen. Also the caller is responsible for a valid circleBuffer-object
+ * or unexpected behaviour could happen.
  *
  * @param circleBuffer Pointer to the circle-buffer
  * @param vertices Pointer to the array of vertex-pointers of the graph
- * @param totalSizeVertices Size of the array @param vertices
+ * @param totalSizeVertices Size of the array vertices
  * @param edges Pointer to the array of edge-pointers of the graph
- * @param totalSizeEdges Size of the array @param edges
+ * @param totalSizeEdges Size of the array edges
  */
 static void solveProblem(struct circleBuffer *circleBuffer, struct Vertex **vertices, int totalSizeVertices, struct Edge **edges, int totalSizeEdges);
 
 /**
  * @brief Frees all the allocated Memory from the graph
+ * @details Vertices and edges are not usable after the call returns. If used
+ * segmentation fault will happen.
  *
  * @param vertices Pointer to the array of vertex-pointers of the graph
  * @param totalSizeVertices Size of the array @param vertices
@@ -114,15 +111,17 @@ static void freeGraph(struct Vertex **vertices, int totalSizeVertices, struct Ed
 
 /**
  * @brief This functions prints the errorMessage to stderr and exits the programm with code EXIT_FAILURE.
+ * @details global variables: progName
  *
  * @param errorMessage The custom errorMessage which will be printed as the error to stderr
  */
 static void printErrorAndExit(char *errorMessage);
 
 /**
- * @brief generators entry point
- * @details This function parses the arguments, opens/closes the circle-buffer
+ * generators entry point
+ * @brief This function parses the arguments, opens/closes the circle-buffer
  * and calls the function to solve the 3coloring problem.
+ * @details global variables: quit, progName
  *
  * @param argc the number of arguments provided
  * @param argv the argument-values provided
@@ -149,7 +148,7 @@ int main(int argc, char *argv[])
     parseArgumentsToGraph(argc, argv, &vertices, &totalSizeVertices, &edges, &totalSizeEdges);
 
     // open the circle-buffer
-    struct circleBuffer *circleBuffer = openCircleBuffer('c');
+    struct circleBuffer *circleBuffer = openCircleBuffer(false);
     if (circleBuffer == NULL)
     {
         // free vertices
@@ -164,7 +163,7 @@ int main(int argc, char *argv[])
     freeGraph(vertices, totalSizeVertices, edges, totalSizeEdges);
 
     // close cirle-buffer
-    if (closeCircleBuffer(circleBuffer, 'c') == -1)
+    if (closeCircleBuffer(circleBuffer, false) == -1)
         printErrorAndExit("Closing circle-buffer failed");
 
     return EXIT_SUCCESS;
@@ -193,15 +192,17 @@ static void freeGraph(struct Vertex **vertices, int totalSizeVertices, struct Ed
 
 /**
  * @brief Returns the Vertex with the specified name out of the vertices array
+ * @details Caller should check that length from **vertices fits together with totalSizeVertices
+ * otherwise function works not properly or segmentation fault could happen.
  *
  * @param vertices Array of pointers to vertices
  * @param name Name of vertex to search for
- * @param length Length of the array
- * @return Pointer to Vertex with the specified name
+ * @param totalSizeVertices Length of the array
+ * @return Pointer to Vertex with the specified name, or NULL if not found
  */
-static struct Vertex *getVertex(struct Vertex **vertices, char *name, int length)
+static struct Vertex *getVertex(struct Vertex **vertices, char *name, int totalSizeVertices)
 {
-    for (int i = 0; i < length; i++)
+    for (int i = 0; i < totalSizeVertices; i++)
     {
         if (strcmp(vertices[i]->name, name) == 0)
             return vertices[i];
@@ -211,19 +212,22 @@ static struct Vertex *getVertex(struct Vertex **vertices, char *name, int length
 }
 
 /**
- * @brief Returns the Edge with the specified vertices out of the edges array
- * @details Because the graph is undirected, it returns the first edge which contains both
- * vertices, where the ordering is ignored. Therefore 0-1 or 1-0 is returned if those are the
- * vertices specified.
+ * @brief Returns the Edge with the specified vertices out of the edges array, Because
+ * the graph is undirected, it returns the first edge which contains both vertices, where
+ * the ordering is ignored. Therefore 0-1 or 1-0 is returned if those are the vertices specified.
+ * @details Caller should check that length from **edges fits together with totalSizeEdges
+ * otherwise function works not properly or segmentation fault could happen and that both
+ * vertices are not null.
+ *
  * @param edges Array of pointers to edges
  * @param vertex1 One vertex of the edge
  * @param vertex2 The other vertex of the edge
- * @param length Length of the array
- * @return Pointer to the edge which contains both vertices
+ * @param totalSizeEdges Length of the array
+ * @return Pointer to the edge which contains both vertices, or NULL if not found
  */
-static struct Edge *getEdge(struct Edge **edges, struct Vertex *vertex1, struct Vertex *vertex2, int length)
+static struct Edge *getEdge(struct Edge **edges, struct Vertex *vertex1, struct Vertex *vertex2, int totalSizeEdges)
 {
-    for (int i = 0; i < length; i++)
+    for (int i = 0; i < totalSizeEdges; i++)
     {
         if (strcmp(edges[i]->vertex1->name, vertex1->name) == 0 && strcmp(edges[i]->vertex2->name, vertex2->name) == 0)
             return edges[i];
@@ -236,13 +240,15 @@ static struct Edge *getEdge(struct Edge **edges, struct Vertex *vertex1, struct 
 }
 
 /**
- * @brief This functions tries to add a vertex to the provided array
- * @details This functions checks if the vertex already exits. If yes it just
- * returns it, otherwise it adds it to the array and increases the array (reallocates
- * memory) and the @param totalSizeVertices
+ * @brief This functions tries to add a vertex to the provided array. First this functions checks
+ * if the vertex already exits. If yes it just returns it, otherwise it adds it to the array and
+ * increases the array (reallocates memory) and the totalSizeVertices
+ * @details Caller should check that length from **vertices fits together with totalSizeVertices
+ * otherwise function works not properly or segmentation fault could happen.
+ *
  * @param name Name of the new Vertex
- * @param vertices Array of vertex-pointers
- * @param totalSizeVertices Size of the array
+ * @param vertices Pointer to array of vertex-pointers, (reallocates if vertex is added)
+ * @param totalSizeVertices Pointer to the size of the array, (increments if vertex is added)
  * @return A pointer to the newly created or found vertex
  */
 static struct Vertex *addVertex(char *name, struct Vertex ***vertices, int *totalSizeVertices)
@@ -284,8 +290,11 @@ static void parseArgumentsToGraph(int argc, char **argv, struct Vertex ***vertic
     {
         if (regexec(&regex, argv[i], 0, NULL, 0) == REG_NOMATCH)
         {
+            regfree(&regex);
+            freeGraph(*vertices, *totalSizeVertices, *edges, *totalSizeEdges);
+
             fprintf(stderr, "Usage: %s Edge Edge Edge ... \n", argv[0]);
-            fprintf(stderr, "Example: %s 0-1 0-2 1-2 \n", argv[0]);
+            fprintf(stderr, "Example: %s 0-1 0-2 1-2\n", argv[0]);
             exit(EXIT_FAILURE);
         }
 
@@ -336,6 +345,9 @@ static void parseArgumentsToGraph(int argc, char **argv, struct Vertex ***vertic
 
 /**
  * @brief Convertes the solution and number of edgesRemoved to a null terminated string
+ * @details Caller should check that length from **solution fits together with edgesRemoved
+ * otherwise function works not properly or segmentation fault could happen.
+ *
  * @param solution Array of edges, which should be converted
  * @param edgesRemoved number of edges, which are specified in the @param solution array
  * @return null-terminated string which has the format "edgesRemoved Edge Edge Edge ...""
@@ -375,7 +387,7 @@ static void solveProblem(struct circleBuffer *circleBuffer, struct Vertex **vert
 {
     int smallestSolution = MAX_SOLUTION_LENGTH;
 
-    while (circleBuffer->sharedMemory->isAlive && quit == 0)
+    while (circleBuffer->sharedMemory->isAlive && smallestSolution >= 0 && quit == 0)
     {
         // color vertices randomly
         for (int i = 0; i < totalSizeVertices; i++)
