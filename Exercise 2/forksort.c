@@ -75,47 +75,39 @@ int main(int argc, char *argv[])
 
     buffer1 = NULL;
     buffer2 = NULL;
-    int size = 0;
-    if (getline(&buffer1, &buf_size1, stdin) == -1)
+
+    if (getline(&buffer1, &buf_size1, stdin) == EOF)
     {
         free(buffer1);
         exit(EXIT_SUCCESS);
     }
 
-    if (getline(&buffer2, &buf_size2, stdin) == -1)
+    if (getline(&buffer2, &buf_size2, stdin) == EOF)
     {
-        f(stdout, "%s", buffer1);
+        fputs(buffer1, stdout);
         free(buffer1);
         free(buffer2);
         exit(EXIT_SUCCESS);
     }
 
-    size++;
+    int size = 2;
+
     createChild(&c1);
-    FILE *file1 = fdopen(c1.write, "w");
-    fputs(buffer1, file1);
-    size++;
     createChild(&c2);
 
+    FILE *file1 = fdopen(c1.write, "w");
     FILE *file2 = fdopen(c2.write, "w");
+    fputs(buffer1, file1);
     fputs(buffer2, file2);
 
-    while (getline(&buffer1, &buf_size1, stdin) != -1)
+    while (getline(&buffer1, &buf_size1, stdin) != EOF)
     {
         fputs(buffer1, file1);
         size++;
-        /*if (write_data(buffer1, fileE) == -1)
-        {
-            error_exit("Failed to write");
-        }*/
-        if (getline(&buffer2, &buf_size2, stdin) != -1)
+        if (getline(&buffer2, &buf_size2, stdin) != EOF)
         {
             fputs(buffer2, file2);
             size++;
-            /*if (write_data(buffer2, fileO) == -1)
-            {
-                error_exit("Failed to write!");
-            }*/
         }
     }
     fclose(file1);
@@ -143,43 +135,163 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Child Process failed!");
         }
     }
-    char *buffer[size];
+
+    char *buffer = NULL;
     char *buffer3 = NULL;
     char *buffer4 = NULL;
 
-    size_t buf_size3 = 0, buf_size4 = 0;
+    size_t buf_size = 0, buf_size3 = 0, buf_size4 = 0;
     FILE *eIn = fdopen(c1.read, "r");
     FILE *oIn = fdopen(c2.read, "r");
 
-    for (int i = 0; i < size / 2; i++)
+    ssize_t readline1 = 0;
+    ssize_t readline2 = 0;
+
+    while (readline1 != EOF && readline2 != EOF)
     {
-        if (getline(&buffer3, &buf_size4, eIn) == -1)
+        if (buffer3 == NULL)
+            readline1 = getline(&buffer3, &buf_size3, eIn);
+        /*if (readline1 != EOF)
         {
-            fclose(eIn);
-            fclose(oIn);
+            buffer3 = strdup(buffer);
+            // strcpy(buffer3, buffer);
+        }*/
+        if (buffer4 == NULL)
+            readline2 = getline(&buffer4, &buf_size4, oIn);
+        /*if (readline2 != EOF)
+        {
+            buffer4 = strdup(buffer);
+            // strcpy(buffer4, buffer);
+        }*/
+        if (readline1 != EOF && readline2 != EOF)
+        {
+            if (strcmp(buffer3, buffer4) < 0)
+            {
+                fputs(buffer3, stdout);
+                /*if (strchr(buffer3, '\n') == NULL)
+                {
+                    fputs("\n", stdout);
+                }*/
+                free(buffer3);
+                buffer3 = NULL;
+            }
+            else
+            {
+                fputs(buffer4, stdout);
+                /*if (strchr(buffer4, '\n') == NULL)
+                {
+                    fputs("\n", stdout);
+                }*/
+                free(buffer4);
+                buffer4 = NULL;
+            }
         }
 
-        fprintf(stdout, "%s", buffer3);
+        free(buffer);
+    }
 
-        if (getline(&buffer3, &buf_size3, oIn) == -1)
+    if (readline1 == EOF)
+    {
+        fputs(buffer4, stdout);
+        /*if (strchr(buffer4, '\n') == NULL)
         {
-            fclose(oIn);
-            fclose(eIn);
+            fputs("\n", stdout);
+        }*/
+        while (getline(&buffer4, &buf_size4, oIn) != EOF)
+        {
+            fputs(buffer4, stdout);
+            /*if (strchr(buffer4, '\n') == NULL)
+            {
+                fputs("\n", stdout);
+            }*/
+        }
+    }
+    else
+    {
+        fputs(buffer3, stdout);
+        /*if (strchr(buffer3, '\n') == NULL)
+        {
+            fputs("\n", stdout);
+        }*/
+        while (getline(&buffer3, &buf_size3, eIn) != EOF)
+        {
+            fputs(buffer3, stdout);
+            /*if (strchr(buffer3, '\n') == NULL)
+            {
+                fputs("\n", stdout);
+            }*/
+        }
+    }
+
+    free(buffer);
+    free(buffer3);
+    free(buffer4);
+
+    /*for (int i = 0; i < size;)
+    {
+        if (buffer3 == NULL)
+        {
+            if (getline(&buffer3, &buf_size3, eIn) == EOF)
+            {
+                fclose(oIn);
+            }
+            i++;
         }
 
-        fprintf(stdout, "%s", buffer3);
-
-        /*if (strcmp(buffer3, buffer4) <= 0)
+        if (buffer4 == NULL)
         {
-            fprintf(stdout, "%s", buffer3);
-            fprintf(stdout, "%s", buffer4);
+            if (getline(&buffer4, &buf_size4, oIn) == EOF)
+            {
+                fclose(oIn);
+            }
+            i++;
+        }
+
+        // fprintf(stdout, "%d: %d<%d ", c1.pid, i, size);
+
+        if (buffer4 == NULL && buffer3 == NULL)
+        {
+        }
+        else if (buffer3 != NULL && buffer4 == NULL)
+        {
+            fputs(buffer3, stdout);
+            if (strchr(buffer3, '\n') == NULL)
+            {
+                fputs("\n", stdout);
+            }
+        }
+        else if (buffer4 != NULL && buffer3 == NULL)
+        {
+            fputs(buffer4, stdout);
+            if (strchr(buffer4, '\n') == NULL)
+            {
+                fputs("\n", stdout);
+            }
         }
         else
         {
-            fprintf(stdout, "%s", buffer4);
-            fprintf(stdout, "%s", buffer3);
+            if (strcmp(buffer3, buffer4) < 0)
+            {
+                fputs(buffer3, stdout);
+                if (strchr(buffer3, '\n') == NULL)
+                {
+                    fputs("\n", stdout);
+                }
+                free(buffer3);
+                buffer3 = NULL;
+            }
+            else
+            {
+                fputs(buffer4, stdout);
+                if (strchr(buffer4, '\n') == NULL)
+                {
+                    fputs("\n", stdout);
+                }
+                free(buffer4);
+                buffer4 = NULL;
+            }
         }*/
-    }
+
     fclose(eIn);
     fclose(oIn);
 
