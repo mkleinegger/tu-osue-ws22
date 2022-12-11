@@ -1,6 +1,6 @@
 # Author: Maximilian Kleinegger <e12041500@student.tuwien.ac.at>
-# Created: 2022-10-06
-# Programs: mydiff
+# Created: 2022-12-05
+# Programs: forksort
 
 CC      = gcc
 DEFS    = -D_DEFAULT_SOURCE -D_BSD_SOURCE -D_SVID_SOURCE -D_POSIX_C_SOURCE=200809L
