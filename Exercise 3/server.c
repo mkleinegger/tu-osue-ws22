@@ -166,19 +166,6 @@ static int createSocket(char *port)
     return sockfd;
 }
 
-/**
- * @brief
- *
- * @param sockfile
- * @param host
- * @param requestPath
- */
-static void sendRequest(FILE *sockfile, char *host, char *requestPath)
-{
-    fprintf(sockfile, "GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: osue-http-client/1.0\r\nConnection: close\r\n\r\n", requestPath, host);
-    fflush(sockfile);
-}
-
 static int readHeaders(FILE *connectFile, char **requestPath)
 {
     char *buffer = NULL;
@@ -202,14 +189,14 @@ static int readHeaders(FILE *connectFile, char **requestPath)
         return 400;
     }
 
-    if (strncmp(version, "HTTP/1.1", strlen("HTTP/1.1")) != 0)
+    if (strcmp(version, "HTTP/1.1") != 0)
     {
         free(buffer);
         // fprintf(stderr, "[%s] Error: Protocol error!\n", PROG_NAME);
         return 400;
     }
 
-    if (strncmp(method, "GET", strlen(method)) != 0)
+    if (strcmp(method, "GET") != 0)
     {
         free(buffer);
         // fprintf(stderr, "[%s] Error %s: %s\n", PROG_NAME, statuscode, statusmessage);
@@ -245,6 +232,19 @@ static void writeHeader(FILE *connectFile, char *requestPath)
     strftime(timeAsText, sizeof(timeAsText), "%a, %d %b %y %T %Z", tmp);
 
     fprintf(connectFile, "HTTP/1.1 200 OK\r\nDate: %s\r\nContent-Length: %lu\r\nConnection: close\r\n", timeAsText, fileSize);
+
+    char *extension = strrchr(requestPath, '.');
+    if (extension != NULL)
+    {
+        if (strcmp(extension, "html") || strcmp(extension, "htm"))
+            fprintf(connectFile, "Content-Type: text/html\r\n");
+        else if (strcmp(extension, "css"))
+            fprintf(connectFile, "Content-Type: text/css\r\n");
+        else if (strcmp(extension, "js"))
+            fprintf(connectFile, "Content-Type: application/javascript\r\n");
+    }
+
+    fprintf(connectFile, "\r\n");
 }
 
 static void writeErrorHeader(FILE *connectFile, int statusCode)
@@ -263,16 +263,10 @@ static void writeErrorHeader(FILE *connectFile, int statusCode)
         break;
     }
 
-    fprintf(connectFile, "HTTP/1.1 %d %s\r\nConnection: close\r\n", statusCode, statusMessage);
+    fprintf(connectFile, "HTTP/1.1 %d %s\r\nConnection: close\r\n\r\n", statusCode, statusMessage);
 }
 
-/**
- * @brief
- *
- * @param sockfile
- * @param fileOutput
- */
-static void writeContent(FILE *fileInput, FILE *connectFile)
+static void writeContent(FILE *connectFile, FILE *fileInput)
 {
     size_t read = 0;
     char buffer[BUF_SIZE];
@@ -284,13 +278,6 @@ static void writeContent(FILE *fileInput, FILE *connectFile)
     fflush(connectFile);
 }
 
-/**
- * @brief
- *
- * @param argc
- * @param argv
- * @return int
- */
 int main(int argc, char **argv)
 {
     PROG_NAME = argv[0];
@@ -350,10 +337,10 @@ int main(int argc, char **argv)
         if ((requestPath)[strlen(requestPath) - 1] == '/')
             strcat(requestPath, index);
 
-        fprintf(stdout, "%s\n", requestPath);
+        // fprintf(stdout, "%s\n", requestPath);
 
         // Open the specified file which should be transmitted
-        FILE *inputFile = fopen(requestPath, "r");
+        FILE *inputFile = fopen(requestPath, "r+");
         if (statusCode == 200)
         {
             if (inputFile == NULL)
@@ -365,11 +352,11 @@ int main(int argc, char **argv)
         if (statusCode == 200)
         {
             writeHeader(connectFile, requestPath);
-            writeContent(inputFile, connectFile);
+            writeContent(connectFile, inputFile);
         }
         else
         {
-            writeErrorHeader(statusCode, connectFile);
+            writeErrorHeader(connectFile, statusCode);
         }
 
         // Free resources
