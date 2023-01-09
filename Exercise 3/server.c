@@ -1,3 +1,10 @@
+/**
+ * @file client.c
+ * @author Maximilian Kleinegger <e12041500@student.tuwien.ac.at>
+ * @date 2022-12-31
+ *
+ * @brief This program servers as a http server (version 1.1)
+ */
 #include "stdio.h"
 #include "stdlib.h"
 #include "netdb.h"
@@ -13,6 +20,10 @@
 #include "sys/socket.h"
 #include "netinet/in.h"
 
+/**
+ * @brief size of the buffer
+ *
+ */
 #define BUF_SIZE 1024
 
 static char *PROG_NAME; /** <name of the programm */
@@ -43,22 +54,6 @@ static void printUsageInfoAndExit(void)
 }
 
 /**
- * @brief Prints a error-message and if existing the errno-message and then exits with EXIT_FAILURE
- * @details global variables: PROG_NAME
- *
- * @param errorMessage the custom error-message, which should be printed
- */
-static void printErrorAndExit(char *errorMessage)
-{
-    if (errno == 0)
-        fprintf(stderr, "[%s] ERROR: %s\n", PROG_NAME, errorMessage);
-    else
-        fprintf(stderr, "[%s] ERROR: %s: %s\n", PROG_NAME, errorMessage, strerror(errno));
-
-    exit(EXIT_FAILURE);
-}
-
-/**
  * @brief Prints a error-message and if existing the errno-message
  * @details global variables: PROG_NAME
  *
@@ -73,18 +68,30 @@ static void printError(char *errorMessage)
 }
 
 /**
- * @brief Checks if the specified string is a number
+ * @brief Prints a error-message and if existing the errno-message and then exits with EXIT_FAILURE
+ * @details global variables: PROG_NAME
+ *
+ * @param errorMessage the custom error-message, which should be printed
+ */
+static void printErrorAndExit(char *errorMessage)
+{
+    printError(errorMessage);
+    exit(EXIT_FAILURE);
+}
+
+/**
+ * @brief Checks if the specified string is a valid port
  *
  * @param string which should be checked
  * @return true, if the specified string is a number
  * @return false, otherwise
  */
-static bool checkIfNumber(char *string)
+static bool checkIfValidPort(char *string)
 {
     char *endptr = NULL;
-    strtol(string, &endptr, 10);
+    long port = strtol(string, &endptr, 10);
 
-    return *endptr == '\0';
+    return *endptr == '\0' && port >= 0 && port <= 65535;
 }
 
 /**
@@ -114,7 +121,7 @@ static void parseArguments(int argumentCount, char **arguments, char **port, cha
         case 'p':
             *port = optarg;
             // check if valid port
-            if (!checkIfNumber(*port))
+            if (!checkIfValidPort(*port))
                 printErrorAndExit("invalid port");
             else if (pFlag)
                 printErrorAndExit("invalid options");
@@ -253,39 +260,39 @@ static int readClientHeaders(FILE *connectedClient, char **requestPath)
     }
 
     // parse first line
+    char *method = strtok(buffer, " ");
+    char *requestedPath = strtok(NULL, " ");
+    char *version = strtok(NULL, "\r\n");
+
+    if ((method == NULL || requestedPath == NULL || version == NULL) && statusCode == 200)
+    {
+        printError("method, version or requestedPath is missing");
+        statusCode = 400;
+    }
+
+    if (statusCode == 200 && strcmp(version, "HTTP/1.1") != 0)
+    {
+        printError("invalid version");
+        statusCode = 400;
+    }
+
+    if (statusCode == 200 && strcmp(method, "GET") != 0)
+    {
+        printError("invalid method");
+        statusCode = 501;
+    }
+
     if (statusCode == 200)
     {
-        char *method = strtok(buffer, " ");
-        char *requestedPath = strtok(NULL, " ");
-        char *version = strtok(NULL, "\r\n");
+        *requestPath = realloc(*requestPath, (strlen(*requestPath) + strlen(requestedPath) + 1) * (sizeof(char)));
+        strcat(*requestPath, requestedPath);
+    }
 
-        if ((method == NULL || requestedPath == NULL || version == NULL) && statusCode == 200)
-        {
-            printError("method, version or requestedPath is missing");
-            statusCode = 400;
-        }
-
-        if (statusCode == 200 && strcmp(version, "HTTP/1.1") != 0)
-        {
-            printError("invalid version");
-            statusCode = 400;
-        }
-
-        if (statusCode == 200 && strcmp(method, "GET") != 0)
-        {
-            printError("invalid method");
-            statusCode = 501;
-        }
-
-        if (statusCode == 200)
-            strcat(*requestPath, requestedPath);
-
-        // skip extra header-lines
-        while (statusCode == 200 && getline(&buffer, &bufferSize, connectedClient) != EOF)
-        {
-            if (strncmp(buffer, "\r\n", strlen("\r\n")) == 0)
-                break;
-        }
+    // skip extra header-lines
+    while (getline(&buffer, &bufferSize, connectedClient) != EOF)
+    {
+        if (strncmp(buffer, "\r\n", strlen("\r\n")) == 0)
+            break;
     }
 
     free(buffer);
@@ -344,7 +351,7 @@ static off_t getFileSize(char *requestPath)
  */
 static char *getCurrentTimestamp()
 {
-    char *buffer = malloc(100);
+    char *buffer = malloc(100 * sizeof(char));
     time_t rawtime = time(NULL);
     struct tm *time_info = gmtime(&rawtime);
 
@@ -352,23 +359,31 @@ static char *getCurrentTimestamp()
     return buffer;
 }
 
-/*static char *getContentType(char *requestPath)
+/**
+ * @brief Gets the content-type of the requested path
+ *
+ * @param requestPath requested resource pathname as string
+ * @return content-type as string, if known, otherwise ""
+ */
+static char *getContentType(char *requestPath)
 {
-    char *extension = strrchr(requestPath, '.') + 1;
-    char *contentType = malloc(100);
-    contentType = "";
+    char *extension = strrchr(requestPath, '.');
+    char *contentType = malloc(50 * sizeof(char));
+    strcpy(contentType, "");
+
     if (extension != NULL)
     {
-        if (strcmp(extension, "html") || strcmp(extension, "htm"))
-            *contentType = "Content-Type: text/html";
-        else if (strcmp(extension, "css"))
-            *contentType = "Content-Type: text/css";
-        else if (strcmp(extension, "js"))
-            *contentType = "Content-Type: application/javascript";
+        extension += 1;
+        if (strncmp(extension, "html", strlen("html")) == 0 || strncmp(extension, "htm", strlen("htm")) == 0)
+            strcpy(contentType, "Content-Type: text/html\r\n");
+        else if (strncmp(extension, "css", strlen("css")) == 0)
+            strcpy(contentType, "Content-Type: text/css\r\n");
+        else if (strncmp(extension, "js", strlen("js")) == 0)
+            strcpy(contentType, "Content-Type: application/javascript\r\n");
     }
 
-    return *contentType;
-}*/
+    return contentType;
+}
 
 /**
  * @brief writes response header with statuscode 200
@@ -386,28 +401,15 @@ static void writeHeader(FILE *connectedClient, char *requestPath)
         writeErrorHeader(connectedClient, 500);
         return;
     }
-    // Find out the time
-    char *timeAsText = getCurrentTimestamp();
-    // char *contentType = getContentType(requestPath);
 
-    char *extension = strrchr(requestPath, '.');
-    char *contentType = "";
-    if (extension != NULL)
-    {
-        extension += 1;
-        if (strcmp(extension, "html") == 0 || strcmp(extension, "htm") == 0)
-            contentType = "Content-Type: text/html\r\n";
-        else if (strcmp(extension, "css") == 0)
-            contentType = "Content-Type: text/css\r\n";
-        else if (strcmp(extension, "js") == 0)
-            contentType = "Content-Type: application/javascript\r\n";
-    }
+    char *timeAsText = getCurrentTimestamp();        // find out the time
+    char *contentType = getContentType(requestPath); // find out the content-type
 
-    fprintf(connectedClient, "HTTP/1.1 200 OK\r\nDate: %s\r\nContent-Length: %lu\r\n%sConnection: close\r\n\r\n", timeAsText, fileSize, contentType);
-    free(timeAsText);
-    // free(contentType);
-
+    fprintf(connectedClient, "HTTP/1.1 200 OK\r\nDate: %s\r\nContent-Length: %lu\r\nConnection: close\r\n%s\r\n", timeAsText, fileSize, contentType);
     fflush(connectedClient);
+
+    free(timeAsText);
+    free(contentType);
 }
 
 /**
@@ -446,6 +448,7 @@ int main(int argc, char **argv)
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = handle_signal;
+    sa.sa_flags = 0;
     sigaction(SIGINT, &sa, NULL);
     sigaction(SIGTERM, &sa, NULL);
 
@@ -459,17 +462,26 @@ int main(int argc, char **argv)
 
     while (!quit)
     {
+        sa.sa_flags = 0;
+        sigaction(SIGINT, &sa, NULL);
+        sigaction(SIGTERM, &sa, NULL);
+
         // accept new client connections
         FILE *connectedClient = NULL;
         int connfd = acceptClient(sockfd, &connectedClient);
-        if (connfd == -1)
+        if (connfd == 0)
+        {
+            continue;
+        }
+        else if (connfd == -1)
         {
             printError("openening connection failed");
             continue;
         }
 
-        if (connectedClient == NULL)
-            continue;
+        sa.sa_flags = SA_RESTART;
+        sigaction(SIGINT, &sa, NULL);
+        sigaction(SIGTERM, &sa, NULL);
 
         // read headers
         char *requestPath = strdup(docRoot);
@@ -481,7 +493,10 @@ int main(int argc, char **argv)
         {
             // add specified index-file if no file specified
             if ((requestPath)[strlen(requestPath) - 1] == '/')
+            {
+                requestPath = (char *)realloc(requestPath, (strlen(requestPath) + strlen(index) + 1) * (sizeof(char)));
                 strcat(requestPath, index);
+            }
 
             inputFile = fopen(requestPath, "r");
 
@@ -507,6 +522,8 @@ int main(int argc, char **argv)
         // close connection
         fclose(connectedClient);
         close(connfd);
+
+        free(requestPath);
     }
 
     // free resources

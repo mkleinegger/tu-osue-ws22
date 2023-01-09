@@ -1,32 +1,33 @@
 /**
  * @file client.c
- * @author your name (you@domain.com)
- * @brief
- * @version 0.1
+ * @author Maximilian Kleinegger <e12041500@student.tuwien.ac.at>
  * @date 2022-12-31
  *
- * @copyright Copyright (c) 2022
- *
+ * @brief This program implements as a http (version 1.1) client, with the GET-method
  */
 #include "stdio.h"
 #include "stdlib.h"
-#include "sys/types.h"
-#include "sys/socket.h"
-#include "string.h"
-#include "netinet/in.h"
 #include "netdb.h"
+#include "string.h"
 #include "stdbool.h"
 #include "getopt.h"
 #include "errno.h"
 #include "unistd.h"
+#include "signal.h"
+#include "time.h"
+#include "sys/stat.h"
+#include "sys/types.h"
+#include "sys/socket.h"
+#include "netinet/in.h"
 
 #define BUF_SIZE 1024
 
 static char *PROG_NAME;
 
 /**
- * @brief
+ * @brief Prints the usage message and exits with EXIT_FAILURE
  *
+ * @details global variables: PROG_NAME
  */
 static void printUsageInfoAndExit(void)
 {
@@ -35,26 +36,52 @@ static void printUsageInfoAndExit(void)
 }
 
 /**
- * @brief
+ * @brief Prints a error-message and if existing the errno-message
+ * @details global variables: PROG_NAME
  *
- * @param errorMessage
+ * @param errorMessage the custom error-message, which should be printed
  */
-static void printErrorAndExit(char *errorMessage)
+static void printError(char *errorMessage)
 {
     if (errno == 0)
         fprintf(stderr, "[%s] ERROR: %s\n", PROG_NAME, errorMessage);
     else
         fprintf(stderr, "[%s] ERROR: %s: %s\n", PROG_NAME, errorMessage, strerror(errno));
+}
 
+/**
+ * @brief Prints a error-message and if existing the errno-message and then exits with EXIT_FAILURE
+ * @details global variables: PROG_NAME
+ *
+ * @param errorMessage the custom error-message, which should be printed
+ */
+static void printErrorAndExit(char *errorMessage)
+{
+    printError(errorMessage);
     exit(EXIT_FAILURE);
 }
 
 /**
- * @brief
+ * @brief Checks if the specified string is a valid port
  *
- * @param string
- * @return true
- * @return false
+ * @param string which should be checked
+ * @return true, if the specified string is a number
+ * @return false, otherwise
+ */
+static bool checkIfValidPort(char *string)
+{
+    char *endptr = NULL;
+    long port = strtol(string, &endptr, 10);
+
+    return *endptr == '\0' && port >= 0 && port <= 65535;
+}
+
+/**
+ * @brief Checks if the specified string is a number
+ *
+ * @param string which should be checked
+ * @return true, if the specified string is a number
+ * @return false, otherwise
  */
 static bool checkIfNumber(char *string)
 {
@@ -65,14 +92,18 @@ static bool checkIfNumber(char *string)
 }
 
 /**
- * @brief
+ * @brief This function parses the arguments
+ * @details The function parses the options and arguments and saves them in the provided pointers.
+ * Additionally it updates them according to the specification. If the user provides to little or
+ * to many arguments or wrong arguments the programm terminates with return-value EXIT_FAILURE and
+ * prints the usage-message, or error-message if the format is not matched.
  *
- * @param argumentCount
- * @param arguments
- * @param port
- * @param host
- * @param requestPath
- * @param output
+ * @param argumentCount number of arguments provided
+ * @param arguments values of arguments provided
+ * @param port pointer, where the port should be saved
+ * @param host pointer, where the host should be saved
+ * @param requestPath pointer, where the requested path should be saved
+ * @param output pointer, where the output(-file) should be saved
  */
 static void parseArguments(int argumentCount, char **arguments, char **port, char **host, char **requestPath, char **output)
 {
@@ -88,10 +119,15 @@ static void parseArguments(int argumentCount, char **arguments, char **port, cha
         case 'p':
             *port = optarg;
             // check if valid port
-            if (!checkIfNumber(*port) || pFlag)
+            if (!checkIfValidPort(*port))
             {
                 free(*output);
-                printUsageInfoAndExit();
+                printErrorAndExit("invalid port");
+            }
+            else if (pFlag)
+            {
+                free(*output);
+                printErrorAndExit("invalid options");
             }
 
             pFlag = true;
@@ -100,7 +136,7 @@ static void parseArguments(int argumentCount, char **arguments, char **port, cha
             if (oFlag)
             {
                 free(*output);
-                printUsageInfoAndExit();
+                printErrorAndExit("invalid options");
             }
 
             *output = strdup(optarg);
@@ -110,7 +146,7 @@ static void parseArguments(int argumentCount, char **arguments, char **port, cha
             if (dFlag)
             {
                 free(*output);
-                printUsageInfoAndExit();
+                printErrorAndExit("invalid options");
             }
 
             *output = strdup(optarg);
@@ -134,8 +170,13 @@ static void parseArguments(int argumentCount, char **arguments, char **port, cha
     }
 
     // adapt output file
+    if (dFlag && (*output)[strlen(*output) - 1] != '/')
+        strcat(*output, "/");
+
     if (dFlag && (*output)[strlen(*output) - 1] == '/')
         strcat(*output, "index.html");
+    else if (dFlag)
+        strcat(*output, strrchr(*output, '/') + 1);
 
     // check if the one url is specified
     if (optind + 1 != argumentCount)
@@ -151,8 +192,7 @@ static void parseArguments(int argumentCount, char **arguments, char **port, cha
     if (strncmp(*host, "http://", strlen("http://")) != 0)
     {
         free(*output);
-
-        printUsageInfoAndExit();
+        printErrorAndExit("invalid protocol");
     }
 
     *host = *host + strlen("http://");
@@ -172,11 +212,13 @@ static void parseArguments(int argumentCount, char **arguments, char **port, cha
 }
 
 /**
- * @brief
+ * @brief This function opens the specified file
+ * @details If no outputFile is specified, results are printed to the
+ * output
  *
- * @param outputFile
- * @param fileOutput
- * @return int
+ * @param outputFile pointer to the name of the output-file
+ * @param fileOutput pointer, where the output-file should be saved
+ * @return -1 if error occures, otherwise 0
  */
 static int openFiles(char *outputFile, FILE **fileOutput)
 {
@@ -198,11 +240,13 @@ static int openFiles(char *outputFile, FILE **fileOutput)
 }
 
 /**
- * @brief Create a Socket object
+ * @brief Create a client-socket object
+ * @details If any method to create the socket fails, the server returns
+ * -1 and prints a error-message to stderr.
  *
- * @param host
- * @param port
- * @return int
+ * @param host the specified host, this client should be connecting to
+ * @param port the specified port, this client should be connecting to
+ * @return the file-descriptor to the newly connected host
  */
 static int createSocket(char *host, char *port)
 {
@@ -215,26 +259,35 @@ static int createSocket(char *host, char *port)
     if (res != 0)
     {
         fprintf(stderr, "[%s] ERROR: getaddrinfo() failed: %s\n", PROG_NAME, gai_strerror(res));
-        exit(EXIT_FAILURE);
+        return -1;
     }
 
     int sockfd = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
     if (sockfd < 0)
-        printErrorAndExit("socket() failed");
+    {
+        freeaddrinfo(ai);
+        printError("socket() failed");
+        return -1;
+    }
 
     if (connect(sockfd, ai->ai_addr, ai->ai_addrlen) < 0)
-        printErrorAndExit("connect() failed");
+    {
+        close(sockfd);
+        freeaddrinfo(ai);
+        printError("connect() failed");
+        return -1;
+    }
 
     freeaddrinfo(ai);
     return sockfd;
 }
 
 /**
- * @brief
+ * @brief This functions send the request to the host
  *
- * @param sockfile
- * @param host
- * @param requestPath
+ * @param sockfile pointer to the I/O from the server
+ * @param host the host as a string
+ * @param requestPath the requested Path as a string
  */
 static void sendRequest(FILE *sockfile, char *host, char *requestPath)
 {
@@ -243,10 +296,11 @@ static void sendRequest(FILE *sockfile, char *host, char *requestPath)
 }
 
 /**
- * @brief
+ * @brief This functions reads the headers from the response
+ * @details Reads only the first line and skips the rest
  *
- * @param sockfile
- * @return int
+ * @param sockfile  pointer to the I/O from the server
+ * @return returns an int, which reports the result of reading the first-line
  */
 static int readHeaders(FILE *sockfile)
 {
@@ -256,7 +310,7 @@ static int readHeaders(FILE *sockfile)
     if (getline(&buffer, &bufferSize, sockfile) == EOF)
     {
         free(buffer);
-        fprintf(stderr, "[%s] Error: Protocol error\n", PROG_NAME);
+        printError("Protocol error!");
         return 2;
     }
 
@@ -265,17 +319,17 @@ static int readHeaders(FILE *sockfile)
     char *statuscode = strtok(NULL, " ");
     char *statusmessage = strtok(NULL, "\r");
 
-    if (strncmp(protocol, "HTTP/1.1", strlen("HTTP/1.1")) != 0 || !checkIfNumber(statuscode))
+    if (strcmp(protocol, "HTTP/1.1") != 0 || !checkIfNumber(statuscode))
     {
         free(buffer);
-        fprintf(stderr, "[%s] Error: Protocol error!\n", PROG_NAME);
+        printError("Protocol error!");
         return 2;
     }
 
-    if (strncmp(statuscode, "200", strlen(statuscode)) != 0)
+    if (strcmp(statuscode, "200") != 0)
     {
         free(buffer);
-        fprintf(stderr, "[%s] Error %s: %s\n", PROG_NAME, statuscode, statusmessage);
+        fprintf(stderr, "[%s] Error %s %s\n", PROG_NAME, statuscode, statusmessage);
         return 3;
     }
 
@@ -291,10 +345,11 @@ static int readHeaders(FILE *sockfile)
 }
 
 /**
- * @brief
+ * @brief Reads the content from sockfile and writes it to the fileOutput
+ * @details reads and writes in binary format
  *
- * @param sockfile
- * @param fileOutput
+ * @param sockfile pointer to the I/O from the server
+ * @param fileOutput pointer to the output-file
  */
 static void readContent(FILE *sockfile, FILE *fileOutput)
 {
@@ -309,11 +364,13 @@ static void readContent(FILE *sockfile, FILE *fileOutput)
 }
 
 /**
- * @brief
+ * @brief The entry point of this programm, where all the different functions are called
+ * @details The main-function calls the different functions, to read the arguments, to
+ * start the client-socket and to connect to a server
  *
- * @param argc
- * @param argv
- * @return int
+ * @param argc number of arguments, provided from the user
+ * @param argv values of arguments, provided from the user
+ * @return Returns EXIT_SUCCESS upon success or EXIT_FAILURE, 2 or 3 upon failure.
  */
 int main(int argc, char **argv)
 {
@@ -333,6 +390,14 @@ int main(int argc, char **argv)
 
     // open socket
     int sockfd = createSocket(host, port);
+    if (sockfd == -1)
+    {
+        free(requestPath);
+        free(output);
+        fclose(fileOutput);
+        printErrorAndExit("socket couldn't be opened");
+    }
+
     FILE *sockfile = fdopen(sockfd, "r+");
     if (sockfile == NULL)
     {
