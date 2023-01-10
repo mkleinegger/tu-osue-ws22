@@ -19,10 +19,16 @@
 #include "sys/types.h"
 #include "sys/socket.h"
 #include "netinet/in.h"
+#include <execinfo.h>
+#include <signal.h>
 
+/**
+ * @brief size of the buffer
+ *
+ */
 #define BUF_SIZE 1024
 
-static char *PROG_NAME;
+static char *PROG_NAME; /** <name of the programm */
 
 /**
  * @brief Prints the usage message and exits with EXIT_FAILURE
@@ -169,15 +175,6 @@ static void parseArguments(int argumentCount, char **arguments, char **port, cha
         printUsageInfoAndExit();
     }
 
-    // adapt output file
-    if (dFlag && (*output)[strlen(*output) - 1] != '/')
-        strcat(*output, "/");
-
-    if (dFlag && (*output)[strlen(*output) - 1] == '/')
-        strcat(*output, "index.html");
-    else if (dFlag)
-        strcat(*output, strrchr(*output, '/') + 1);
-
     // check if the one url is specified
     if (optind + 1 != argumentCount)
     {
@@ -199,14 +196,29 @@ static void parseArguments(int argumentCount, char **arguments, char **port, cha
 
     // Get file path
     char *requestFile = strpbrk(*host, ";/?:@=&");
+
+    // adapt output file
+    if (dFlag)
+    {
+        if ((*output)[strlen(*output) - 1] != '/')
+            strcat(*output, "/");
+
+        int size = strstr(requestFile, "?") - (requestFile + 1);
+        if (strcmp(requestFile, "/") == 0 || size == 0)
+            strcat(*output, "index.html");
+        else
+            strncat(*output, requestFile + 1, size);
+    }
+
+    // set requested file
     if (requestFile != NULL)
     {
         *requestPath = strdup(requestFile);
-        strcpy(requestFile, "");
+        strcpy(requestFile, ""); // to clear host from file
     }
     else
     {
-        *requestPath = malloc(sizeof(char *));
+        *requestPath = malloc(sizeof(char));
         strcpy(*requestPath, "/");
     }
 }
@@ -220,7 +232,7 @@ static void parseArguments(int argumentCount, char **arguments, char **port, cha
  * @param fileOutput pointer, where the output-file should be saved
  * @return -1 if error occures, otherwise 0
  */
-static int openFiles(char *outputFile, FILE **fileOutput)
+static int openFile(char *outputFile, FILE **fileOutput)
 {
 
     // open File
@@ -381,7 +393,7 @@ int main(int argc, char **argv)
 
     // parse Arguments
     parseArguments(argc, argv, &port, &host, &requestPath, &output);
-    if (openFiles(output, &fileOutput) == -1)
+    if (openFile(output, &fileOutput) == -1)
     {
         free(requestPath);
         free(output);
